@@ -2,24 +2,38 @@
 #include <iostream>
 #include <vector>
 #include <cstdint>
-#include <chrono>
 #include <cmath>
 #include <omp.h>
 
-typedef std::chrono::steady_clock::time_point chrono_time;
-inline auto chrono_count(const auto& difference) {
-	return std::chrono::duration_cast<std::chrono::milliseconds>(difference).count();
+#define CTIME
+
+#ifdef CTIME
+#include <ctime>
+auto to_millis(auto input) {
+	return input/1000;
 }
-inline auto chrono_now() {
-	return std::chrono::steady_clock::now();
+
+auto myclock() {
+	return clock();
 }
+
+#else
+#include <chrono>
+auto to_millis(auto input) {
+	return std::chrono::duration_cast<std::chrono::milliseconds>(input).count();
+}
+
+auto myclock() {
+	return std::chrono::system_clock::now();
+}
+#endif
 
 void process(std::vector<int32_t>& pixels, int32_t size) {
 	auto pxl = [&](unsigned int x, unsigned int y) -> int32_t& {return pixels[x+y*size];};
 	
 	for (auto s = size; s > 1; s /= 2) {
 		auto mid = s/2;
-		
+				
 		// row-transform
 		#pragma omp parallel for
 		for (auto y = 0; y < mid; ++y) {
@@ -30,7 +44,7 @@ void process(std::vector<int32_t>& pixels, int32_t size) {
 				pxl(x+mid, y) = (tmp1 - tmp2) / M_SQRT2;
 			}
 		}
-		
+				
 		// col-transform
 		#pragma omp parallel for
 		for (auto y = 0; y < mid; y++) {
@@ -41,7 +55,6 @@ void process(std::vector<int32_t>& pixels, int32_t size) {
 				pxl(x, y+mid) = (tmp1 - tmp2) / M_SQRT2;
 			}
 		}
-		
 	}
 }
 
@@ -54,7 +67,7 @@ int main(int argc, char* argv[]) {
         return 255;
     }
 
-    chrono_time begin = chrono_now();
+    auto begin = myclock();
 
     // Open the files
     ifile.open(argv[1], std::ios::binary | std::ios::in);
@@ -75,19 +88,21 @@ int main(int argc, char* argv[]) {
 	ifile.read(reinterpret_cast<char*>(pixels.data()), size*size*sizeof(int32_t));
 	ifile.close();
 	
-	chrono_time after_reading = chrono_now();
-	std::cout << "Reading took " << chrono_count(after_reading - begin) << "ms " << std::endl;
+	auto after_reading = myclock();
+	std::cout << "Reading took " << to_millis(after_reading - begin) << "ms " << std::endl;
 	std::cout << "Processing an image of " << size << "x" << size << " dimensions with up to " << omp_get_max_threads()  << " threads" << std::endl;
 	
 	process(pixels, size);
-	chrono_time after_processing = chrono_now();
+	auto after_processing = myclock();
 	
-	std::cout << "Processing took " << chrono_count(after_processing - after_reading) << "ms " << std::endl;
+	std::cout << "Processing took " << to_millis(after_processing - after_reading) << "ms " << std::endl;
 	
 	ofile.write(reinterpret_cast<char*>(pixels.data()), pixels.size()*sizeof(int32_t));
 	ofile.close();
 	
-	std::cout << "Writing took " << chrono_count(chrono_now() - after_processing) << "ms " << std::endl;
+	auto after_writing = myclock();
+	
+	std::cout << "Writing took " << to_millis(after_writing - after_processing) << "ms " << std::endl;
 	
 	return 0;
 }
