@@ -1,145 +1,109 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <math.h>
+#include <fstream>
+#include <iostream>
+#include <vector>
+#include <cstdint>
+#include <cmath>
+#include <omp.h>
 
-#include <time.h>
-#include <stdint.h>
+//#define CTIME
 
-#define pixel(x,y) pixels[((y)*size)+(x)]
-#define pixel_new(x,y) pixels_new[((y)*size)+(x)]
+#ifdef CTIME
+#include <ctime>
+auto to_millis(auto input) {
+	return input/1000;
+}
 
-//#define DEBUG
+auto myclock() {
+	return clock();
+}
 
-void print(int *pixels, int size) {
-	int x, y;
-	for (y = 0; y < size; y++) {
-		for (x = 0; x < size; x++) {
-			printf("%10d ", pixel(x,y));
+#else
+#include <chrono>
+auto to_millis(auto input) {
+	return std::chrono::duration_cast<std::chrono::milliseconds>(input).count();
+}
+
+auto myclock() {
+	return std::chrono::system_clock::now();
+}
+#endif
+
+void process(std::vector<int32_t>& pixels, int32_t size) {
+	auto pxl = [&](unsigned int x, unsigned int y) -> int32_t& {return pixels[x+y*size];};
+	
+	for (auto s = size; s > 1; s /= 2) {
+		auto mid = s/2;
+				
+		// row-transform
+		#pragma omp parallel for
+		for (auto y = 0; y < mid; ++y) {
+			for (auto x = 0; x < mid; ++x) {
+				auto tmp1 = pxl(x, y);
+				auto tmp2 = pxl(x+mid, y);
+				pxl(x, y) = (tmp1 + tmp2) / M_SQRT2;
+				pxl(x+mid, y) = (tmp1 - tmp2) / M_SQRT2;
+			}
 		}
-		printf("\n");
-		fflush(stdout);
+				
+		// col-transform
+		#pragma omp parallel for
+		for (auto y = 0; y < mid; y++) {
+			for (auto x = 0; x < mid; x++) {
+				auto tmp1 = pxl(x, y);
+				auto tmp2 = pxl(x, y+mid);
+				pxl(x, y) = (tmp1 + tmp2) / M_SQRT2;
+				pxl(x, y+mid) = (tmp1 - tmp2) / M_SQRT2;
+			}
+		}
 	}
 }
 
-int main(int argc, char *argv[]) {
-    if (argc != 3) {
-        printf("usage: %s [input_file] [output_file]\n", argv[0]);
-        return 0;
+int main(int argc, char* argv[]) {
+	std::ifstream ifile;
+	std::ofstream ofile;
+	
+	if (argc != 3) {
+        std::cout << "usage: " << argv[0] << " [input_file] [output_file]" << std::endl;
+        return 255;
     }
 
-	FILE *in;
-	FILE *out;
+    auto begin = myclock();
 
-    clock_t start;
-    clock_t end;
-
-	in = fopen(argv[1], "rb");
-	if (in == NULL) {
-		perror(argv[1]);
-		exit(EXIT_FAILURE);
+    // Open the files
+    ifile.open(argv[1], std::ios::binary | std::ios::in);
+	ofile.open(argv[2], std::ios::binary | std::ios::out | std::ios::trunc);
+	if(!ifile.is_open() || !ofile.is_open()) {
+		std::cout << "couldn't open file" << std::endl;
+		return -1;
 	}
-
-	out = fopen(argv[2], "wb");
-	if (out == NULL) {
-		perror(argv[2]);
-		exit(EXIT_FAILURE);
-	}
-
-	long long int s, size, mid;
-	int x, y;
-	long long int a, d;
-	double SQRT_2;
-
-	fread(&size, sizeof(size), 1, in);
-
-	fwrite(&size, sizeof(size), 1, out);
-
-	int *pixels = (int *) malloc(size * size * sizeof(int));
-	int *pixels_new = (int *) malloc(size * size * sizeof(int));
 	
-    start = clock();
-	if (!fread(pixels, size * size * sizeof(int), 1, in)) {
-		perror("read error");
-		exit(EXIT_FAILURE);
-	}
-    end = clock();
-    printf("time to read: %ju (%f s)\n", (uintmax_t)(end - start), (float)(end - start) / CLOCKS_PER_SEC);
+	// Read the data into a vec<vec<int>>
+	int32_t size;
+	ifile.read(reinterpret_cast<char*>(&size), sizeof(size));
+	ofile.write(reinterpret_cast<char*>(&size), sizeof(size));
 
-#ifdef DEBUG
-	printf("origin: %lld\n", size);
-	print(pixels, size);
-#endif
-
-	// haar
-    start = clock();
-
-	SQRT_2 = sqrt(2);
-	for (s = size; s > 1; s /= 2) {
-		mid = s / 2;
-		
-		
-		
-		// row-transformation
-		#pragma omp parallel for
-		for (y = 0; y < mid; ++y) {
-			for (x = 0; x < mid; ++x) {
-				a = pixel(x,y);
-				a = (a+pixel(mid+x,y))/SQRT_2;
-				d = pixel(x,y);
-				d = (d-pixel(mid+x,y))/SQRT_2;
-				pixel_new(x,y) = a;
-				pixel_new(mid+x,y) = d;
-			}
-		}
-		
-		// swap the pointers
-		int* tmp = pixels_new;
-		pixels_new = pixels;
-		pixels = tmp;
-
-#ifdef DEBUG
-		printf("after row-transformation: %lld\n", mid);
-		print(pixels, size);
-#endif
-		// column-transformation
-		
-		#pragma omp parallel for
-		for (y = 0; y < mid; y++) {
-			for (x = 0; x < mid; x++) {
-				a = pixel(x,y);
-				a = (a+pixel(x,mid+y))/SQRT_2;
-				d = pixel(x,y);
-				d = (d-pixel(x,mid+y))/SQRT_2;
-				pixel_new(x,y) = a;
-				pixel_new(x,mid+y) = d;
-			}
-		}
-		
-		// swap the pointers
-		tmp = pixels_new;
-		pixels_new = pixels;
-		pixels = tmp;
-
-#ifdef DEBUG
-		printf("after column-transformation: %lld\n", mid);
-		print(pixels, size);
-#endif
-	}
-
-    end = clock();
-    printf("time to haar: %ju (%f s)\n", (uintmax_t)(end - start), (float)(end - start) / CLOCKS_PER_SEC);
-
-    start = clock();
-
-	fwrite(pixels, size * size * sizeof(int), 1, out);
-
-    end = clock();
-    printf("time to write: %ju (%f s)\n", (uintmax_t)(end - start), (float)(end - start) / CLOCKS_PER_SEC);
-
-	free(pixels);
-
-	fclose(out);
-	fclose(in);
-
-	return EXIT_SUCCESS;
+	
+	std::vector<int32_t> pixels;
+	pixels.resize(size*size, 0);
+	ifile.read(reinterpret_cast<char*>(pixels.data()), size*size*sizeof(int32_t));
+	ifile.close();
+	
+	auto after_reading = myclock();
+	std::cout << "Reading took " << to_millis(after_reading - begin) << "ms " << std::endl;
+	std::cout << "Processing an image of " << size << "x" << size << " dimensions with up to " << omp_get_max_threads()  << " threads" << std::endl;
+	
+	process(pixels, size);
+	auto after_processing = myclock();
+	
+	std::cout << "Processing took " << to_millis(after_processing - after_reading) << "ms " << std::endl;
+	
+	ofile.write(reinterpret_cast<char*>(pixels.data()), pixels.size()*sizeof(int32_t));
+	ofile.close();
+	
+	auto after_writing = myclock();
+	
+	std::cout << "Writing took " << to_millis(after_writing - after_processing) << "ms " << std::endl;
+	
+	return 0;
 }
+
