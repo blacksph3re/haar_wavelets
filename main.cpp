@@ -19,11 +19,11 @@ auto myclock() {
 
 #else
 #include <chrono>
-auto to_millis(auto input) {
+long int to_millis(auto input) {
 	return std::chrono::duration_cast<std::chrono::milliseconds>(input).count();
 }
 
-auto myclock() {
+std::chrono::system_clock::time_point myclock() {
 	return std::chrono::system_clock::now();
 }
 #endif

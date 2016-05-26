@@ -2,7 +2,7 @@ build:
 	g++ main.cpp -o haar -std=c++14 -O3 -fopenmp
 
 refmachine:
-	g++-5 main.cpp -o haar -std=c++14 -O3 -fopenmp
+	g++-5 main.cpp -o haar_ref -std=c++14 -O3 -fopenmp
 	
 run:
 	OMP_NUM_THREADS=4 ./haar input output
