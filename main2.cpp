@@ -53,7 +53,7 @@ int main(int argc, char* argv[]) {
         std::cout << "usage: " << argv[0] << " [input_file] [output_file]" << std::endl;
         return 255;
     }
-    
+
     chrono_time begin = chrono_now();
 
     // Open the files
