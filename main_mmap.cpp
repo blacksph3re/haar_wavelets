@@ -111,6 +111,7 @@ int main(int argc, char* argv[]) {
 	auto after_writing = myclock();
 	
 	std::cout << "Writing took " << to_millis(after_writing - after_processing) << "ms " << std::endl;
+	std::cout << "Total " << to_millis(after_writing - begin) << "ms " << std::endl;
 	
 	return 0;
 }
